@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import Icon from '@/components/ui/icon';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { storage } from '@/lib/offline-storage';
+import { useToast } from '@/hooks/use-toast';
 
 interface Order {
   id: string;
@@ -27,6 +30,10 @@ type Tab = 'orders' | 'history' | 'profile' | 'stats';
 const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>('orders');
   const [showScanner, setShowScanner] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const { isOnline, wasOffline } = useOnlineStatus();
+  const { toast } = useToast();
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
 
   const orders: Order[] = [
     {
@@ -72,6 +79,61 @@ const Index = () => {
     { id: '#12841', date: '13:30', earnings: 620, rating: 5 },
   ];
 
+  useEffect(() => {
+    const loadOfflineData = () => {
+      const data = storage.getData();
+      setPendingActionsCount(data.pendingActions.length);
+    };
+    loadOfflineData();
+  }, []);
+
+  useEffect(() => {
+    if (isOnline && wasOffline) {
+      syncPendingActions();
+    }
+  }, [isOnline, wasOffline]);
+
+  const syncPendingActions = async () => {
+    const pendingActions = storage.getPendingActions();
+    if (pendingActions.length === 0) return;
+
+    setIsSyncing(true);
+    toast({
+      title: '🔄 Синхронизация',
+      description: `Отправка ${pendingActions.length} действий на сервер...`,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    storage.clearPendingActions();
+    setPendingActionsCount(0);
+    setIsSyncing(false);
+
+    toast({
+      title: '✅ Синхронизировано',
+      description: 'Все данные успешно отправлены',
+    });
+  };
+
+  const handleOrderAction = (orderId: string, actionType: string) => {
+    if (!isOnline) {
+      storage.addPendingAction({
+        type: actionType as any,
+        orderId,
+      });
+      setPendingActionsCount(storage.getPendingActions().length);
+      toast({
+        title: '📦 Сохранено офлайн',
+        description: 'Действие будет отправлено при подключении',
+      });
+    } else {
+      toast({
+        title: '✅ Действие выполнено',
+        description: `Заказ ${orderId} обновлен`,
+      });
+    }
+  };
+
   const getStatusColor = (status: Order['status']) => {
     switch (status) {
       case 'new':
@@ -101,9 +163,30 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold">Курьер</h1>
-              <p className="text-sm opacity-90">Статус: В сети</p>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-400'}`} />
+                <p className="text-sm opacity-90">
+                  {isOnline ? 'В сети' : 'Офлайн'}
+                  {isSyncing && ' (синхронизация...)'}
+                </p>
+              </div>
             </div>
             <div className="flex gap-2">
+              {pendingActionsCount > 0 && (
+                <div className="relative">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-primary-foreground hover:bg-primary-foreground/20"
+                    onClick={syncPendingActions}
+                  >
+                    <Icon name="CloudUpload" size={20} />
+                  </Button>
+                  <span className="absolute -top-1 -right-1 bg-accent text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                    {pendingActionsCount}
+                  </span>
+                </div>
+              )}
               <Button
                 size="icon"
                 variant="ghost"
@@ -201,7 +284,10 @@ const Index = () => {
                     <div className="flex gap-2 pt-2">
                       {order.status === 'new' && (
                         <>
-                          <Button className="flex-1 gap-2">
+                          <Button 
+                            className="flex-1 gap-2"
+                            onClick={() => handleOrderAction(order.id, 'accept')}
+                          >
                             <Icon name="Check" size={18} />
                             Принять
                           </Button>
@@ -212,7 +298,10 @@ const Index = () => {
                       )}
                       {order.status === 'picked' && (
                         <>
-                          <Button className="flex-1 gap-2 bg-accent hover:bg-accent/90">
+                          <Button 
+                            className="flex-1 gap-2 bg-accent hover:bg-accent/90"
+                            onClick={() => handleOrderAction(order.id, 'start_delivery')}
+                          >
                             <Icon name="Truck" size={18} />
                             Начать доставку
                           </Button>
@@ -223,7 +312,10 @@ const Index = () => {
                       )}
                       {order.status === 'delivering' && (
                         <>
-                          <Button className="flex-1 gap-2 bg-green-600 hover:bg-green-700">
+                          <Button 
+                            className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+                            onClick={() => handleOrderAction(order.id, 'complete')}
+                          >
                             <Icon name="CheckCircle" size={18} />
                             Завершить
                           </Button>
