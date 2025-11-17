@@ -156,6 +156,19 @@ const Index = () => {
     }
   };
 
+  const handlePhotoTaken = (orderId: string, photoData: string) => {
+    storage.saveDeliveryPhoto(orderId, photoData);
+    setOrderPhotos(prev => ({ ...prev, [orderId]: photoData }));
+    toast({
+      title: '📸 Фото сохранено',
+      description: 'Фото доставки добавлено к заказу',
+    });
+  };
+
+  const completeOrderWithPhoto = (orderId: string) => {
+    setPhotoOrderId(orderId);
+  };
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <div className="max-w-md mx-auto">
@@ -312,16 +325,37 @@ const Index = () => {
                       )}
                       {order.status === 'delivering' && (
                         <>
-                          <Button 
-                            className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
-                            onClick={() => handleOrderAction(order.id, 'complete')}
-                          >
-                            <Icon name="CheckCircle" size={18} />
-                            Завершить
-                          </Button>
-                          <Button variant="outline" size="icon">
-                            <Icon name="Phone" size={18} />
-                          </Button>
+                          {orderPhotos[order.id] ? (
+                            <>
+                              <Button 
+                                className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+                                onClick={() => handleOrderAction(order.id, 'complete')}
+                              >
+                                <Icon name="CheckCircle" size={18} />
+                                Завершить
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="icon"
+                                onClick={() => setPhotoOrderId(order.id)}
+                              >
+                                <Icon name="Image" size={18} className="text-green-600" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button 
+                                className="flex-1 gap-2 bg-accent hover:bg-accent/90"
+                                onClick={() => completeOrderWithPhoto(order.id)}
+                              >
+                                <Icon name="Camera" size={18} />
+                                Сделать фото
+                              </Button>
+                              <Button variant="outline" size="icon">
+                                <Icon name="Phone" size={18} />
+                              </Button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -498,6 +532,17 @@ const Index = () => {
             ))}
           </div>
         </nav>
+
+        <PhotoCapture
+          isOpen={photoOrderId !== null}
+          onClose={() => setPhotoOrderId(null)}
+          onPhotoTaken={(photoData) => {
+            if (photoOrderId) {
+              handlePhotoTaken(photoOrderId, photoData);
+            }
+          }}
+          orderId={photoOrderId || ''}
+        />
       </div>
     </div>
   );
